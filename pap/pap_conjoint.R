@@ -1,6 +1,7 @@
 # Author: Kamya Yadav
 # Date Created: August 28, 2025 
-# Dissertation Pre-Analysis Script
+# Date Modified: September 15, 2025
+# Conjoint Pre-Analysis Script
 
 # SET UP ####################################################################################################
 
@@ -345,7 +346,7 @@ promotion_fig = promotion_tidy %>%
   labs(x = 'Estimate',
        y = 'Attribute')
 
-# ggsave('results/figures/promotion.png', plot = promotion_fig, units = 'in', width = 6, height = 6)
+# ggsave('../results/figures/promotion.png', plot = promotion_fig, units = 'in', width = 6, height = 6)
 
 coef_map = c('Female',
              'Caste: SC', 'Caste: OBC', 'Caste: In-Group',
@@ -424,7 +425,7 @@ quality_fig = quality_tidy %>%
   labs(x = 'Estimate',
        y = 'Attribute')
 
-# ggsave('results/figures/quality.png', plot = quality_fig, units = 'in', width = 6, height = 6)
+# ggsave('../results/figures/quality.png', plot = quality_fig, units = 'in', width = 6, height = 6)
 
 # modelsummary(list('Perceived Quality' = quality),
 #              coef_rename = coef_map,
@@ -433,74 +434,98 @@ quality_fig = quality_tidy %>%
 #              # output = 'results/tables/quality.tex',
 #              align = 'lc')
 
-# outcome 3: candidacy 
+# outcome 3: individual roles 
 
-candidacy = lm_robust(formula = as.formula(paste('elec_candidate~', conjoint_rhs)),
-                    data = pap_attributes,
-                    clusters = caseid,
-                    se_type = 'CR2',
-                    fixed_effects = ~ enumerator)
-candidacy_tidy = tidy(candidacy)
-candidacy_tidy$term = c('Female',
-                      'SC', 'OBC', 'In-Group',
-                      'MP: Medium', 'MP: High',
-                      'CC: Medium', 'CC: High',
-                      'Yes',
-                      'Lifelong',
-                      'Main Party Secretary',
-                      'Morcha President',
-                      'NA: Medium', 'NA: High')
+roles = c('voter_reg', 'election_incharge', 'main_leader', 'morcha_leader', 'elec_candidate')
+new_term_names = c('Female', 'SC', 'OBC', 'In-Group', 'MP: Medium', 'MP: High',
+                    'CC: Medium', 'CC: High', 'Yes', 'Lifelong', 
+                    'Main Party Secretary', 'Morcha President', 
+                    'NA: Medium', 'NA: High')
 
-reference_candidacy = data.frame(matrix(NA, nrow = 8, ncol = 9))
-colnames(reference_candidacy) = names(candidacy_tidy)
-reference_candidacy$term = c('Gender: Male', 
-                           'Caste: General',
-                           'Mobilization Power: Low',
-                           'Campaign Contribution: Low',
-                           'Delivers Constituency Services: No',
-                           'Party Membership: Multiple',
-                           'Highest Post: None',
-                           'Networking Ability: Low')
-reference_candidacy$estimate = 0
-reference_candidacy$std.error = 0
-reference_candidacy$statistic = 0
-reference_candidacy$p.value = 0
-reference_candidacy$conf.low = 0
-reference_candidacy$conf.high = 0
-reference_candidacy$df = 0
-reference_candidacy$outcome = rep('elec_candidate', 8)
-candidacy_tidy = bind_rows(candidacy_tidy, reference_candidacy)
-candidacy_tidy$term = factor(candidacy_tidy$term, levels = c('Gender: Male', 
-                                                         'Female',
-                                                         'Caste: General', 'SC', 'OBC', 'In-Group',
-                                                         'Mobilization Power: Low', 'MP: Medium', 'MP: High',
-                                                         'Campaign Contribution: Low', 'CC: Medium', 'CC: High',
-                                                         'Delivers Constituency Services: No', 'Yes',
-                                                         'Party Membership: Multiple', 'Lifelong',
-                                                         'Highest Post: None', 'Main Party Secretary', 'Morcha President',
-                                                         'Networking Ability: Low', 'NA: Medium', 'NA: High'))
+reference_terms = data.frame(
+  term = c('Gender: Male', 'Caste: General', 'Mobilization Power: Low', 
+           'Campaign Contribution: Low', 'Delivers Constituency Services: No',
+           'Party Membership: Multiple', 'Highest Post: None', 'Networking Ability: Low'),
+  estimate = 0, std.error = 0, statistic = 0, p.value = 0, 
+  conf.low = 0, conf.high = 0, df = 0
+)
 
-candidacy_fig = candidacy_tidy %>% 
-  ggplot() + 
-  aes(x = estimate, y = fct_rev(term)) + 
-  geom_point(position = position_dodge(width = 0.6)) + 
-  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), position = position_dodge(width = 0.6), height = 0) + 
-  geom_vline(xintercept = 0, linetype = "dashed", color = "black") + 
-  scale_color_brewer(palette = "Set1") + 
-  theme_bw() + 
-  theme(axis.text.y = element_text(lineheight = 1.1),
-        strip.background = element_rect(fill="lightblue")) + 
-  labs(x = 'Estimate',
-       y = 'Attribute')
+factor_levels = c(
+  'Gender: Male', 'Female',
+  'Caste: General', 'SC', 'OBC', 'In-Group',
+  'Mobilization Power: Low', 'MP: Medium', 'MP: High',
+  'Campaign Contribution: Low', 'CC: Medium', 'CC: High',
+  'Delivers Constituency Services: No', 'Yes',
+  'Party Membership: Multiple', 'Lifelong',
+  'Highest Post: None', 'Main Party Secretary', 'Morcha President',
+  'Networking Ability: Low', 'NA: Medium', 'NA: High'
+)
 
-# ggsave('results/figures/candidacy.png', plot = candidacy_fig, units = 'in', width = 6, height = 6)
+results_list = list()
+model_list = list()
 
-# modelsummary(list('Electoral Candidate' = candidacy),
-#              coef_rename = coef_map,
-#              stars = TRUE,
-#              gof_omit = 'BIC|AIC',
-#              # output = 'results/tables/candidacy.tex',
-#              align = 'lc')
+for (role in roles) {
+  model = lm_robust(
+    formula = as.formula(paste(role, '~', conjoint_rhs)),
+    data = pap_attributes,
+    clusters = caseid,
+    se_type = 'CR2',
+    fixed_effects = ~ enumerator
+  )
+  
+  model_list[[role]] = model
+  
+  tidy_model = tidy(model)
+  tidy_model$outcome = role
+  tidy_model$term = new_term_names
+  
+  reference_df = reference_terms
+  reference_df$outcome = role
+  
+  results_list[[role]] = bind_rows(tidy_model, reference_df)
+}
+
+all_roles_tidy = bind_rows(results_list)
+
+all_roles_tidy$term = factor(all_roles_tidy$term, levels = factor_levels)
+roles_clean = c('Voter Registration', 'Election In-Charge', 'Main Party Leader', 'Party Morcha Leader', 'Electoral Candidate')
+for (role in roles_clean) {
+  
+  plot_data = all_roles_tidy %>%
+    mutate(outcome = case_when(
+      outcome == 'voter_reg' ~ 'Voter Registration',
+      outcome == 'election_incharge' ~ 'Election In-Charge',
+      outcome == 'main_leader' ~ 'Main Party Leader',
+      outcome == 'morcha_leader' ~ 'Party Morcha Leader',
+      outcome == 'elec_candidate' ~ 'Electoral Candidate'
+    )) %>% 
+    filter(outcome == role) 
+  
+  role_fig = ggplot(data = plot_data, aes(x = estimate, y = fct_rev(term))) +
+    geom_point() +
+    geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+    theme_bw() +
+    labs(
+      title = paste("Conjoint Analysis Results for:", role),
+      x = 'Estimate (Change in Probability)',
+      y = 'Attribute'
+    )
+  
+  #ggsave(filename = paste0("../results/figures/", role, ".png"), plot = role_fig, width = 8, height = 6)
+}
+
+names(model_list) = roles_clean
+
+modelsummary(
+  model_list,
+  coef_rename = coef_map,
+  stars = TRUE,
+  gof_omit = 'BIC|AIC'
+ #title = 'Effect of Political Attributes on Role Selection',
+  #notes = 'Estimates are Average Marginal Component Effects (AMCEs). Robust standard errors clustered by respondent.'
+  # output = 'results/tables/all_roles.tex'
+)
 
 # outcome 4: minor role 
 
@@ -562,7 +587,7 @@ minor_role_fig = minor_role_tidy %>%
   labs(x = 'Estimate',
        y = 'Attribute')
 
-# ggsave('results/figures/minor_role.png', plot = minor_role_fig, units = 'in', width = 6, height = 6)
+# ggsave('../results/figures/minor_role.png', plot = minor_role_fig, units = 'in', width = 6, height = 6)
 
 # modelsummary(list('Minor Role' = minor_role),
 #              coef_rename = coef_map,
@@ -573,22 +598,31 @@ minor_role_fig = minor_role_tidy %>%
 
 # all main models combined 
 
-modelsummary(list('Promotion' = promotion,
-                  'Perceived Quality' = quality,
-                  'Electoral Candidacy' = candidacy,
-                  'Minor Role' = minor_role),
+all_models = c(
+  list('Promotion' = promotion, 'Perceived Quality' = quality), 
+  model_list, 
+  list('Minor Role' = minor_role)
+)
+modelsummary(all_models,
              coef_rename = coef_map,
              stars = TRUE,
              gof_omit = 'BIC|AIC',
              # output = 'results/tables/conjoint_table.tex',
-             align = 'lcccc')
+             align = 'lcccccccc')
 
-results = bind_rows(promotion_tidy, quality_tidy, candidacy_tidy, minor_role_tidy)
+all_roles_tidy = all_roles_tidy %>% 
+  mutate(outcome = case_when(
+    outcome == 'voter_reg' ~ 'Voter Registration',
+    outcome == 'election_incharge' ~ 'Election In-Charge',
+    outcome == 'main_leader' ~ 'Main Party Leader',
+    outcome == 'morcha_leader' ~ 'Party Morcha Leader',
+    outcome == 'elec_candidate' ~ 'Electoral Candidate'
+  ))
+results = bind_rows(promotion_tidy, quality_tidy, minor_role_tidy, all_roles_tidy)
 results$outcome = ifelse(results$outcome == 'chosen', 'Promotion', 
                          ifelse(results$outcome == 'rating', 'Perceived Quality',
-                                ifelse(results$outcome == 'elec_candidate', 'Electoral Candidate',
-                                       ifelse(results$outcome == 'minor_role', 'Minor Role', results$outcome))))
-
+                                       ifelse(results$outcome == 'minor_role', 'Minor Role', results$outcome)))
+results$outcome = factor(results$outcome, levels = c('Promotion', 'Perceived Quality', 'Voter Registration', 'Election In-Charge', 'Main Party Leader', 'Party Morcha Leader', 'Electoral Candidate', 'Minor Role'))
 results_fig = results %>% 
   ggplot() + 
   aes(x = estimate, y = fct_rev(term)) + 
@@ -601,266 +635,247 @@ results_fig = results %>%
         strip.background = element_rect(fill="lightblue")) + 
   labs(x = 'Estimate',
        y = 'Attribute') + 
-  facet_wrap(~outcome)
+  facet_wrap(~outcome, ncol = 2, nrow = 4)
 
-# ggsave('results/figures/conjoint_results.png', plot = results_fig, units = 'in', height = 8, width = 10)
+# ggsave('../results/figures/conjoint_results.png', plot = results_fig, units = 'in', height = 8, width = 10)
 
 # sub group analysis by respondent gender and the candidate profile gender 
+
+outcomes = c(
+  'chosen' = 'Promotion',
+  'rating' = 'Perceived Quality',
+  'minor_role' = 'Minor Role',
+  'elec_candidate' = 'Electoral Candidate',
+  'voter_reg' = 'Voter Registration',
+  'election_incharge' = 'Election In-Charge',
+  'main_leader' = 'Main Party Leader',
+  'morcha_leader' = 'Party Morcha Leader'
+)
+
 gender_resp_results = list()
 gender_resp_models = list()
-gender_resp = unique(pap_attributes$gender_resp)
-for(i in gender_resp){
-  pap_gender = pap_attributes[pap_attributes$gender_resp == i, ]
-  promotion = lm_robust(formula = as.formula(paste('chosen~', conjoint_rhs)),
-                        data = pap_gender,
-                        clusters = caseid,
-                        se_type = 'CR2',
-                        fixed_effects = ~ enumerator)
-  quality = lm_robust(formula = as.formula(paste('rating~', conjoint_rhs)),
-                      data = pap_gender,
-                      clusters = caseid,
-                      se_type = 'CR2',
-                      fixed_effects = ~ enumerator)
-  candidacy = lm_robust(formula = as.formula(paste('elec_candidate~', conjoint_rhs)),
-                        data = pap_gender,
-                        clusters = caseid,
-                        se_type = 'CR2',
-                        fixed_effects = ~ enumerator)
-  minor_role = lm_robust(formula = as.formula(paste('minor_role~', conjoint_rhs)),
-                         data = pap_gender,
-                         clusters = caseid,
-                         se_type = 'CR2',
-                         fixed_effects = ~ enumerator)
-  df = bind_rows(tidy(promotion), tidy(quality), tidy(candidacy), tidy(minor_role))
-  df$gender_resp = i
-  gender_resp_results = bind_rows(gender_resp_results, df)
-  gender_resp_models[[paste0('Promotion (', i, ')')]]     = promotion
-  gender_resp_models[[paste0('Perceived Quality (', i, ')')]] = quality
-  gender_resp_models[[paste0('Electoral Candidacy (', i, ')')]]  = candidacy
-  gender_resp_models[[paste0('Minor Role (', i, ')')]]    = minor_role
+
+gender_resp_values = unique(pap_attributes$gender_resp)
+
+for (g in gender_resp_values) {
+  
+  pap_gender = pap_attributes[pap_attributes$gender_resp == g, ]
+  gender_label = ifelse(g == 1, 'Female', 'Male')
+  
+  for (outcome_var in names(outcomes)) {
+    
+    clean_name = outcomes[outcome_var] 
+    
+    model = lm_robust(
+      formula = as.formula(paste(outcome_var, '~', conjoint_rhs)),
+      data = pap_gender,
+      clusters = caseid,
+      se_type = 'CR2',
+      fixed_effects = ~ enumerator
+    )
+    
+    tidy_df = tidy(model)
+    tidy_df$outcome = clean_name
+    tidy_df$gender_resp = gender_label
+    
+    # Add the tidy data frame to our list of results
+    gender_resp_results[[length(gender_resp_results) + 1]] = tidy_df
+    
+    # Store the raw model object with a unique name for modelsummary
+    model_name = paste0(clean_name, ' (', gender_label, ')')
+    gender_resp_models[[model_name]] = model
+  }
 }
 
-model_order = list(
-  'Promotion' = list(
-    'Female' = gender_resp_models$`Promotion (1`,
-    'Male' = gender_resp_models$`Promotion (0`
-  ),
-  'Perceived Quality' = list(
-    'Female' = gender_resp_models$`Perceived Quality (1`,
-    'Male' = gender_resp_models$`Perceived Quality (0`
-  ),
-  'Electoral Candidate' = list(
-    'Female' = gender_resp_models$`Electoral Candidacy (1`,
-    'Male' = gender_resp_models$`Electoral Candidacy (0`
-  ),
-  'Minor Role' = list(
-    'Female' = gender_resp_models$`Minor Role (1`,
-    'Male' = gender_resp_models$`Minor Role (0`
+# Bind all tidy results into one big data frame
+gender_resp_results = bind_rows(gender_resp_results)
+
+model_order = list()
+for (clean_name in unique(outcomes)) {
+  model_order[[clean_name]] = list(
+    'Female' = gender_resp_models[[paste0(clean_name, ' (Female)')]],
+    'Male'   = gender_resp_models[[paste0(clean_name, ' (Male)')]]
   )
-)
-modelsummary(model_order,
+}
+
+# Generate the summary table
+modelsummary(
+  model_order,
   coef_rename = coef_map,
   stars = TRUE,
   gof_omit = 'BIC|AIC',
   shape = 'cbind',
-  title = 'Conjoint Analysis Results by Respondent Gender', 
+  title = 'Conjoint Analysis Results by Respondent Gender'
   # output = 'results/tables/conjoint_table_by_gender.tex',
-  align = 'lcccccccc'
 )
-gender_resp_results$term = rep(c('Female',
-                                 'SC', 'OBC', 'In-Group',
-                                 'MP: Medium', 'MP: High',
-                                 'CC: Medium', 'CC: High',
-                                 'Yes',
-                                 'Lifelong',
-                                 'Main Party Secretary',
-                                 'Morcha President',
-                                 'NA: Medium', 'NA: High'), 8)
-gender_resp_results$outcome = ifelse(gender_resp_results$outcome == 'chosen', 'Promotion',
-                                     ifelse(gender_resp_results$outcome == 'rating', 'Perceived Quality',
-                                            ifelse(gender_resp_results$outcome == 'minor_role', 'Minor Role',
-                                                   ifelse(gender_resp_results$outcome == 'elec_candidate', 'Electoral Candidate', gender_resp_results$outcome))))
-gender_resp_results$gender_resp = ifelse(gender_resp_results$gender_resp == 1, 'Female', 'Male')
 
-reference_gender_resp = data.frame(matrix(NA, nrow = 64, ncol = 10))
-colnames(reference_gender_resp) = names(gender_resp_results)
-reference_gender_resp$term = rep(c('Gender: Male', 
-                         'Caste: General',
-                         'Mobilization Power: Low',
-                         'Campaign Contribution: Low',
-                         'Delivers Constituency Services: No',
-                         'Party Membership: Multiple',
-                         'Highest Post: None',
-                         'Networking Ability: Low'), 8)
-reference_gender_resp$estimate = 0
-reference_gender_resp$std.error = 0
-reference_gender_resp$statistic = 0
-reference_gender_resp$p.value = 0
-reference_gender_resp$conf.low = 0
-reference_gender_resp$conf.high = 0
-reference_gender_resp$df = 0
-reference_gender_resp$outcome = rep(c(rep('Promotion', 8), rep('Perceived Quality', 8), rep('Minor Role', 8), rep('Electoral Candidate', 8)), 2)
-reference_gender_resp$gender_resp = rep(c(rep('Female', 32), rep('Male', 32)))
+new_term_names_hte = c('Female', 'SC', 'OBC', 'In-Group', 'MP: Medium', 'MP: High', 
+                    'CC: Medium', 'CC: High', 'Yes', 'Lifelong', 'Main Party Secretary', 
+                    'Morcha President', 'NA: Medium', 'NA: High')
+
+n_models = length(outcomes) * length(gender_resp_values)
+gender_resp_results$term = rep(new_term_names_hte, n_models)
+
+n_outcomes = length(outcomes)
+n_genders = length(gender_resp_values)
+n_ref_cats = 8
+total_ref_rows = n_ref_cats * n_outcomes * n_genders
+
+reference_terms_hte = c('Gender: Male', 'Caste: General', 'Mobilization Power: Low', 
+                     'Campaign Contribution: Low', 'Delivers Constituency Services: No',
+                     'Party Membership: Multiple', 'Highest Post: None', 'Networking Ability: Low')
+
+reference_gender_resp = data.frame(
+  term = rep(reference_terms_hte, n_models),
+  estimate = 0, std.error = 0, statistic = 0, p.value = 0, conf.low = 0, conf.high = 0, df = 0,
+  outcome = rep(unique(outcomes), each = n_ref_cats * n_genders),
+  gender_resp = rep(rep(c('Female', 'Male'), each = n_ref_cats), n_outcomes)
+)
+
+# Combine results with reference rows
 gender_resp_results = bind_rows(gender_resp_results, reference_gender_resp)
-gender_resp_results = gender_resp_results %>% 
-  group_by(outcome, gender_resp) %>% 
-  mutate(term = factor(term, levels = c('Gender: Male', 
-                                        'Female',
-                                        'Caste: General', 'SC', 'OBC', 'In-Group',
-                                        'Mobilization Power: Low', 'MP: Medium', 'MP: High',
-                                        'Campaign Contribution: Low', 'CC: Medium', 'CC: High',
-                                        'Delivers Constituency Services: No', 'Yes',
-                                        'Party Membership: Multiple', 'Lifelong',
-                                        'Highest Post: None', 'Main Party Secretary', 'Morcha President',
-                                        'Networking Ability: Low', 'NA: Medium', 'NA: High')))
 
-gender_resp_fig = gender_resp_results %>% 
-  ggplot() + 
-  aes(x = estimate, y = fct_rev(term), color = as.factor(gender_resp)) + 
-  geom_point(aes(shape = as.factor(gender_resp)), position = position_dodge(width = 0.6)) + 
+# Set factor levels for plotting
+factor_levels = c('Gender: Male', 'Female', 'Caste: General', 'SC', 'OBC', 'In-Group',
+                   'Mobilization Power: Low', 'MP: Medium', 'MP: High',
+                   'Campaign Contribution: Low', 'CC: Medium', 'CC: High',
+                   'Delivers Constituency Services: No', 'Yes', 'Party Membership: Multiple', 'Lifelong',
+                   'Highest Post: None', 'Main Party Secretary', 'Morcha President',
+                   'Networking Ability: Low', 'NA: Medium', 'NA: High')
+
+gender_resp_results$term = factor(gender_resp_results$term, levels = factor_levels)
+gender_resp_results$outcome = factor(gender_resp_results$outcome, levels = unique(outcomes))
+
+gender_resp_fig = ggplot(gender_resp_results) + 
+  aes(x = estimate, y = fct_rev(term), color = gender_resp) + 
+  geom_point(aes(shape = gender_resp), position = position_dodge(width = 0.6)) + 
   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), position = position_dodge(width = 0.6), height = 0) + 
   geom_vline(xintercept = 0, linetype = "dashed", color = "black") + 
   scale_color_brewer(palette = "Set1") + 
   theme_bw() + 
   theme(axis.text.y = element_text(lineheight = 1.1),
         strip.background = element_rect(fill="lightblue")) + 
-  labs(x = 'Estimate',
-       y = 'Attribute',
-       color = 'Respondent Gender',
-       shape = 'Respondent Gender') + 
-  facet_wrap(~outcome)
+  labs(x = 'Estimate', y = 'Attribute', color = 'Respondent Gender', shape = 'Respondent Gender') + 
+  facet_wrap(~outcome, ncol = 2, nrow = 4)
 
-# ggsave('results/figures/conjoint_by_gender.png', plot = gender_resp_fig, units = 'in', width = 10, height = 10)
+# ggsave('../results/figures/conjoint_by_gender.png', plot = gender_resp_fig, units = 'in', width = 10, height = 10)
 
 # analysis akin to AICE with gender 
 
-conjoint_rhs_cand = c("caste_SC", "caste_OBC", "caste_ingroup", "mob_power_Medium", "mob_power_High", "campaign_con_Medium", "campaign_con_High", "const_service_Can_deliver_services", "party_mem_One_party", "highest_post_Main_party_secretary", "highest_post_Morcha_president", "networking_Medium", "networking_High")
+conjoint_rhs_cand = c("caste_SC", "caste_OBC", "caste_ingroup", "mob_power_Medium", "mob_power_High", 
+                       "campaign_con_Medium", "campaign_con_High", "const_service_Can_deliver_services", 
+                       "party_mem_One_party", "highest_post_Main_party_secretary", 
+                       "highest_post_Morcha_president", "networking_Medium", "networking_High")
 conjoint_rhs_cand = paste(conjoint_rhs_cand, collapse = " + ")
-gender_cand_results = list()
+
+gender_cand_results_list = list()
 gender_cand_models = list()
-gender_cand = unique(pap_attributes$gender_Female)
-for(i in gender_cand){
-  pap_gender = pap_attributes[pap_attributes$gender_Female == i, ]
-  promotion = lm_robust(formula = as.formula(paste('chosen~', conjoint_rhs_cand)),
-                        data = pap_gender,
-                        clusters = caseid,
-                        se_type = 'CR2',
-                        fixed_effects = ~ enumerator)
-  quality = lm_robust(formula = as.formula(paste('rating~', conjoint_rhs_cand)),
-                      data = pap_gender,
-                      clusters = caseid,
-                      se_type = 'CR2',
-                      fixed_effects = ~ enumerator)
-  candidacy = lm_robust(formula = as.formula(paste('elec_candidate~', conjoint_rhs_cand)),
-                        data = pap_gender,
-                        clusters = caseid,
-                        se_type = 'CR2',
-                        fixed_effects = ~ enumerator)
-  minor_role = lm_robust(formula = as.formula(paste('minor_role~', conjoint_rhs_cand)),
-                         data = pap_gender,
-                         clusters = caseid,
-                         se_type = 'CR2',
-                         fixed_effects = ~ enumerator)
-  df = bind_rows(tidy(promotion), tidy(quality), tidy(candidacy), tidy(minor_role))
-  df$gender_cand = i
-  gender_cand_results = bind_rows(gender_cand_results, df)
-  gender_cand_models[[paste0('Promotion (', i, ')')]]     = promotion
-  gender_cand_models[[paste0('Perceived Quality (', i, ')')]] = quality
-  gender_cand_models[[paste0('Electoral Candidacy (', i, ')')]]  = candidacy
-  gender_cand_models[[paste0('Minor Role (', i, ')')]]    = minor_role
+
+gender_cand_values = unique(pap_attributes$gender_Female) 
+
+for (g in gender_cand_values) {
+  
+  pap_gender = pap_attributes[pap_attributes$gender_Female == g, ]
+  gender_label = ifelse(g == 1, 'Female', 'Male')
+  
+  for (outcome_var in names(outcomes)) {
+    
+    clean_name = outcomes[outcome_var]
+    
+    model = lm_robust(
+      formula = as.formula(paste(outcome_var, '~', conjoint_rhs_cand)),
+      data = pap_gender,
+      clusters = caseid,
+      se_type = 'CR2',
+      fixed_effects = ~ enumerator
+    )
+    
+    tidy_df = tidy(model)
+    tidy_df$outcome = clean_name
+    tidy_df$gender_cand = gender_label
+    
+    gender_cand_results_list[[length(gender_cand_results_list) + 1]] = tidy_df
+    
+    model_name = paste0(clean_name, ' (', gender_label, ')')
+    gender_cand_models[[model_name]] = model
+  }
 }
-model_order_cand = list(
-  'Promotion' = list(
-    'Female' = gender_cand_models$`Promotion (1`,
-    'Male' = gender_cand_models$`Promotion (0`
-  ),
-  'Perceived Quality' = list(
-    'Female' = gender_cand_models$`Perceived Quality (1`,
-    'Male' = gender_cand_models$`Perceived Quality (0`
-  ),
-  'Electoral Candidate' = list(
-    'Female' = gender_cand_models$`Electoral Candidacy (1`,
-    'Male' = gender_cand_models$`Electoral Candidacy (0`
-  ),
-  'Minor Role' = list(
-    'Female' = gender_cand_models$`Minor Role (1`,
-    'Male' = gender_cand_models$`Minor Role (0`
+
+gender_cand_results = bind_rows(gender_cand_results_list)
+
+model_order_cand = list()
+for (clean_name in unique(outcomes)) {
+  model_order_cand[[clean_name]] = list(
+    'Female' = gender_cand_models[[paste0(clean_name, ' (Female)')]],
+    'Male'   = gender_cand_models[[paste0(clean_name, ' (Male)')]]
   )
-)
-coef_map_cand = c('Caste: SC', 'Caste: OBC', 'Caste: In-Group',
-                  'Mobilization Power: Medium', 'Mobilization Power: High',
-                  'Campaign Contribution: Medium', 'Campaign Contribution: High',
-                  'Delivers Constituency Service: Yes',
-                  'Party Membership: Lifelong',
-                  'Highest Post: Main Party Secretary',
-                  'Highest Post: Morcha President',
-                  'Networking Ability: Medium', 'Networking Ability: High')
-modelsummary(model_order_cand,
-             coef_rename = coef_map_cand,
-             stars = TRUE,
-             gof_omit = 'BIC|AIC',
-             shape = 'cbind',
-             title = 'Conjoint Analysis Results by Candidate Gender', 
-             # output = 'results/tables/conjoint_table_aice_gender.tex',
-             align = 'lcccccccc'
-)
-gender_cand_results$term = rep(c('SC', 'OBC', 'In-Group',
-                                 'MP: Medium', 'MP: High',
-                                 'CC: Medium', 'CC: High',
-                                 'Yes',
-                                 'Lifelong',
-                                 'Main Party Secretary',
-                                 'Morcha President',
-                                 'NA: Medium', 'NA: High'), 8)
-gender_cand_results$outcome = ifelse(gender_cand_results$outcome == 'chosen', 'Promotion',
-                                     ifelse(gender_cand_results$outcome == 'rating', 'Perceived Quality',
-                                            ifelse(gender_cand_results$outcome == 'minor_role', 'Minor Role',
-                                                   ifelse(gender_cand_results$outcome == 'elec_candidate', 'Electoral Candidate', gender_cand_results$outcome))))
-gender_cand_results$gender_cand = ifelse(gender_cand_results$gender_cand == 1, 'Female', 'Male')
+}
 
-reference_cand_resp = data.frame(matrix(NA, nrow = 56, ncol = 10))
-colnames(reference_cand_resp) = names(gender_cand_results)
-reference_cand_resp$term = rep(c('Caste: General',
-                                   'Mobilization Power: Low',
-                                   'Campaign Contribution: Low',
-                                   'Delivers Constituency Services: No',
-                                   'Party Membership: Multiple',
-                                   'Highest Post: None',
-                                   'Networking Ability: Low'), 8)
-reference_cand_resp$estimate = 0
-reference_cand_resp$std.error = 0
-reference_cand_resp$statistic = 0
-reference_cand_resp$p.value = 0
-reference_cand_resp$conf.low = 0
-reference_cand_resp$conf.high = 0
-reference_cand_resp$df = 0
-reference_cand_resp$outcome = rep(c(rep('Promotion', 7), rep('Perceived Quality', 7), rep('Minor Role', 7), rep('Electoral Candidate', 7)), 2)
-reference_cand_resp$gender_cand = rep(c(rep('Female', 28), rep('Male', 28)))
+coef_map_cand = c(
+  'caste_SC' = 'Caste: SC', 'caste_OBC' = 'Caste: OBC', 'caste_ingroup' = 'Caste: In-Group',
+  'mob_power_Medium' = 'Mobilization Power: Medium', 'mob_power_High' = 'Mobilization Power: High',
+  'campaign_con_Medium' = 'Campaign Contribution: Medium', 'campaign_con_High' = 'Campaign Contribution: High',
+  'const_service_Can_deliver_services' = 'Delivers Constituency Service: Yes',
+  'party_mem_One_party' = 'Party Membership: Lifelong',
+  'highest_post_Main_party_secretary' = 'Highest Post: Main Party Secretary',
+  'highest_post_Morcha_president' = 'Highest Post: Morcha President',
+  'networking_Medium' = 'Networking Ability: Medium', 'networking_High' = 'Networking Ability: High'
+)
+
+modelsummary(
+  model_order_cand,
+  coef_rename = coef_map_cand,
+  stars = TRUE,
+  gof_omit = 'BIC|AIC',
+  shape = 'cbind',
+  title = 'Conjoint Analysis Results by Candidate Gender',  
+  # output = 'results/tables/conjoint_table_aice_gender.tex'
+)
+
+new_term_names_cand = c('SC', 'OBC', 'In-Group', 'MP: Medium', 'MP: High', 'CC: Medium', 
+                         'CC: High', 'Yes', 'Lifelong', 'Main Party Secretary', 
+                         'Morcha President', 'NA: Medium', 'NA: High')
+
+n_models = length(outcomes) * length(gender_cand_values)
+gender_cand_results$term = rep(new_term_names_cand, n_models)
+
+n_outcomes = length(outcomes)
+n_genders = length(gender_cand_values)
+n_ref_cats_cand = 7
+
+reference_terms_cand = c('Caste: General', 'Mobilization Power: Low', 'Campaign Contribution: Low',
+                          'Delivers Constituency Services: No', 'Party Membership: Multiple',
+                          'Highest Post: None', 'Networking Ability: Low')
+
+reference_cand_resp = data.frame(
+  term = rep(reference_terms_cand, n_models),
+  estimate = 0, std.error = 0, statistic = 0, p.value = 0, conf.low = 0, conf.high = 0, df = 0,
+  outcome = rep(unique(outcomes), each = n_ref_cats_cand * n_genders),
+  gender_cand = rep(rep(c('Female', 'Male'), each = n_ref_cats_cand), n_outcomes)
+)
+
 gender_cand_results = bind_rows(gender_cand_results, reference_cand_resp)
-gender_cand_results = gender_cand_results %>% 
-  group_by(outcome, gender_cand) %>% 
-  mutate(term = factor(term, levels = c('Caste: General', 'SC', 'OBC', 'In-Group',
-                                        'Mobilization Power: Low', 'MP: Medium', 'MP: High',
-                                        'Campaign Contribution: Low', 'CC: Medium', 'CC: High',
-                                        'Delivers Constituency Services: No', 'Yes',
-                                        'Party Membership: Multiple', 'Lifelong',
-                                        'Highest Post: None', 'Main Party Secretary', 'Morcha President',
-                                        'Networking Ability: Low', 'NA: Medium', 'NA: High')))
 
-gender_cand_fig = gender_cand_results %>% 
-  ggplot() + 
-  aes(x = estimate, y = fct_rev(term), color = as.factor(gender_cand)) + 
-  geom_point(aes(shape = as.factor(gender_cand)), position = position_dodge(width = 0.6)) + 
+factor_levels_cand = c('Caste: General', 'SC', 'OBC', 'In-Group', 'Mobilization Power: Low', 
+                        'MP: Medium', 'MP: High', 'Campaign Contribution: Low', 'CC: Medium', 'CC: High',
+                        'Delivers Constituency Services: No', 'Yes', 'Party Membership: Multiple', 'Lifelong',
+                        'Highest Post: None', 'Main Party Secretary', 'Morcha President',
+                        'Networking Ability: Low', 'NA: Medium', 'NA: High')
+
+gender_cand_results$term = factor(gender_cand_results$term, levels = factor_levels_cand)
+gender_cand_results$outcome = factor(gender_cand_results$outcome, levels = unique(outcomes))
+
+gender_cand_fig = ggplot(gender_cand_results) + 
+  aes(x = estimate, y = fct_rev(term), color = gender_cand) + 
+  geom_point(aes(shape = gender_cand), position = position_dodge(width = 0.6)) + 
   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), position = position_dodge(width = 0.6), height = 0) + 
   geom_vline(xintercept = 0, linetype = "dashed", color = "black") + 
   scale_color_brewer(palette = "Set1") + 
   theme_bw() + 
   theme(axis.text.y = element_text(lineheight = 1.1),
         strip.background = element_rect(fill="lightblue")) + 
-  labs(x = 'Estimate',
-       y = 'Attribute',
-       color = 'Candidate Gender',
-       shape = 'Candidate Gender') + 
-  facet_wrap(~outcome)
+  labs(x = 'Estimate', y = 'Attribute', color = 'Candidate Gender', shape = 'Candidate Gender') + 
+  facet_wrap(~outcome, ncol = 2, nrow = 4)
 
-# ggsave('results/figures/conjoint_aice_gender.png', plot = gender_cand_fig, units = 'in', width = 10, height = 10)
+# print(gender_cand_fig)
+# ggsave('../results/figures/conjoint_aice_gender.png', plot = gender_cand_fig, units = 'in', width = 10, height = 10)
